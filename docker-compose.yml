@@ -50,6 +50,8 @@ services:
     restart: unless-stopped
     profiles:
       - os-services
+    depends_on:
+      - app
     tty: true
     stdin_open: true
 
@@ -67,6 +69,8 @@ services:
     restart: unless-stopped
     profiles:
       - os-services
+    depends_on:
+      - app
     tty: true
     stdin_open: true
 
@@ -84,6 +88,8 @@ services:
     restart: unless-stopped
     profiles:
       - os-services
+    depends_on:
+      - app
     tty: true
     stdin_open: true
 
