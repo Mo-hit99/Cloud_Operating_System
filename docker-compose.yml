@@ -1,0 +1,94 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: docker_os_manager
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./server:/app/server
+      - ./client:/app/client
+    environment:
+      - NODE_ENV=development
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=docker_os_manager
+      - DB_USER=admin
+      - DB_PASSWORD=password
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+
+  # Ubuntu Linux Desktop with noVNC
+  ubuntu-desktop:
+    image: dorowu/ubuntu-desktop-lxde-vnc:latest
+    container_name: ubuntu-desktop
+    ports:
+      - "3002:80"
+    environment:
+      - VNC_PASSWORD=osmanager
+      - RESOLUTION=1920x1080
+    volumes:
+      - ubuntu_config:/home/ubuntu
+    restart: unless-stopped
+    profiles:
+      - os-services
+    tty: true
+    stdin_open: true
+
+  # Alpine Linux Desktop with VNC
+  alpine-desktop:
+    image: danielguerra/alpine-vnc:latest
+    container_name: alpine-desktop
+    ports:
+      - "3001:6080"
+    environment:
+      - VNC_PASSWORD=osmanager
+      - RESOLUTION=1920x1080
+    volumes:
+      - alpine_config:/home/alpine
+    restart: unless-stopped
+    profiles:
+      - os-services
+    tty: true
+    stdin_open: true
+
+  # Debian Linux Desktop with XFCE
+  debian-desktop:
+    image: accetto/debian-vnc-xfce-g3:latest
+    container_name: debian-desktop
+    ports:
+      - "3003:5901"
+    environment:
+      - VNC_PW=osmanager
+      - VNC_RESOLUTION=1920x1080
+    volumes:
+      - debian_config:/home/headless
+    restart: unless-stopped
+    profiles:
+      - os-services
+    tty: true
+    stdin_open: true
+
+volumes:
+  postgres_data:
+  alpine_config:
+  ubuntu_config:
+  debian_config:

@@ -1,0 +1,21 @@
+{
+  "name": "os-manager",
+  "version": "1.0.0",
+  "description": "Streamlined web interface for Ubuntu, Alpine, Debian Linux and Tor service containers",
+  "main": "index.js",
+  "scripts": {
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install && cd ..",
+    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "server:dev": "cd server && npm run dev",
+    "client:dev": "cd client && npm start",
+    "build": "cd client && npm run build",
+    "start": "cd server && npm start",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "os:start": "docker-compose --profile os-services up -d",
+    "os:stop": "docker-compose --profile os-services down"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
