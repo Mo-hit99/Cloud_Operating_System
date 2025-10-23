@@ -1,0 +1,82 @@
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: os-manager-postgres
+    env: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile.postgres
+    envVars:
+      - key: POSTGRES_DB
+        value: docker_os_manager
+      - key: POSTGRES_USER
+        value: admin
+      - key: POSTGRES_PASSWORD
+        generateValue: true
+
+  # Redis Cache
+  - type: redis
+    name: os-manager-redis
+    plan: starter
+    maxmemoryPolicy: allkeys-lru
+
+  # Main Application (Backend + Frontend)
+  - type: web
+    name: os-manager-app
+    env: node
+    plan: starter
+    buildCommand: npm run install-all && cd server && npm run build && cd ../client && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_HOST
+        fromService:
+          type: pserv
+          name: os-manager-postgres
+          property: host
+      - key: DB_PORT
+        fromService:
+          type: pserv
+          name: os-manager-postgres
+          property: port
+      - key: DB_NAME
+        value: docker_os_manager
+      - key: DB_USER
+        value: admin
+      - key: DB_PASSWORD
+        fromService:
+          type: pserv
+          name: os-manager-postgres
+          property: password
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: os-manager-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: os-manager-redis
+          property: port
+    healthCheckPath: /api/health
+
+  # Ubuntu Linux Desktop with noVNC
+  - type: web
+    name: ubuntu-desktop
+    env: docker
+    plan: starter
+    dockerCommand: docker run -p 80:80 -e VNC_PASSWORD=osmanager -e RESOLUTION=1920x1080 dorowu/ubuntu-desktop-lxde-vnc:latest
+
+  # Alpine Linux Desktop with VNC
+  - type: web
+    name: alpine-desktop
+    env: docker
+    plan: starter
+    dockerCommand: docker run -p 6080:6080 -e VNC_PASSWORD=osmanager -e RESOLUTION=1920x1080 danielguerra/alpine-vnc:latest
+
+  # Debian Linux Desktop with XFCE
+  - type: web
+    name: debian-desktop
+    env: docker
+    plan: starter
+    dockerCommand: docker run -p 5901:5901 -e VNC_PW=osmanager -e VNC_RESOLUTION=1920x1080 accetto/debian-vnc-xfce-g3:latest

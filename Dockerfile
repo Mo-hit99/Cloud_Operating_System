@@ -2,9 +2,6 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install Docker CLI
-RUN apk add --no-cache docker-cli
-
 # Copy package files
 COPY package*.json ./
 COPY server/package*.json ./server/
@@ -16,15 +13,17 @@ RUN npm install
 # Copy source code
 COPY . .
 
-# Install server dependencies
-RUN cd server && npm install
+# Install server dependencies and build
+RUN cd server && npm install && npm run build
 
 # Install client dependencies and build
-RUN cd client && npm install
-RUN cd client && npm run build
-RUN ls -la /app/client/build || echo "Build directory not found"
+RUN cd client && npm install && npm run build
+
+# Remove development dependencies to reduce image size
+RUN npm prune --production
+RUN cd server && npm prune --production
 
 EXPOSE 5000
 
-# Start the server in development mode (which will serve both API and frontend)
-CMD ["npm", "run", "server:dev"]
+# Start the server in production mode
+CMD ["npm", "start"]
