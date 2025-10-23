@@ -44,11 +44,8 @@ services:
         value: docker_os_manager
       - key: DB_USER
         value: admin
-      - key: DATABASE_URL
-        fromService:
-          type: pserv
-          name: os-manager-postgres
-          property: connectionString
+      - key: DB_PASSWORD
+        generateValue: true
       - key: REDIS_HOST
         fromService:
           type: redis
