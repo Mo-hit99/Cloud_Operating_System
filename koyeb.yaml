@@ -1,0 +1,121 @@
+name: os-manager-app
+
+services:
+  # PostgreSQL Database
+  - name: postgres
+    type: database
+    database:
+      engine: postgresql
+      version: "15"
+    instance_type: nano
+    env:
+      - POSTGRES_DB=docker_os_manager
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - name: postgres-data
+        mount_path: /var/lib/postgresql/data
+        size: 1GB
+
+  # Redis Cache
+  - name: redis
+    type: database
+    database:
+      engine: redis
+      version: "7"
+    instance_type: nano
+
+  # Main Application
+  - name: app
+    type: web
+    git:
+      branch: main
+      build_command: |
+        cd server && npm install && npm run build &&
+        cd ../client && npm install && npm run build
+      run_command: npm start
+    instance_type: nano
+    ports:
+      - port: 5000
+        protocol: http
+    env:
+      - NODE_ENV=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=docker_os_manager
+      - DB_USER=admin
+      - DB_PASSWORD=password
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    health_check:
+      http:
+        path: /api/health
+        port: 5000
+    depends_on:
+      - postgres
+      - redis
+
+  # Ubuntu Linux Desktop
+  - name: ubuntu-desktop
+    type: web
+    docker:
+      image: dorowu/ubuntu-desktop-lxde-vnc:latest
+    instance_type: small
+    ports:
+      - port: 80
+        protocol: http
+    env:
+      - VNC_PASSWORD=osmanager
+      - RESOLUTION=1920x1080
+    volumes:
+      - name: ubuntu-config
+        mount_path: /home/ubuntu
+        size: 1GB
+    depends_on:
+      - app
+
+  # Alpine Linux Desktop
+  - name: alpine-desktop
+    type: web
+    docker:
+      image: danielguerra/alpine-vnc:latest
+    instance_type: small
+    ports:
+      - port: 6080
+        protocol: http
+    env:
+      - VNC_PASSWORD=osmanager
+      - RESOLUTION=1920x1080
+    volumes:
+      - name: alpine-config
+        mount_path: /home/alpine
+        size: 1GB
+    depends_on:
+      - app
+
+  # Debian Linux Desktop
+  - name: debian-desktop
+    type: web
+    docker:
+      image: accetto/debian-vnc-xfce-g3:latest
+    instance_type: small
+    ports:
+      - port: 5901
+        protocol: http
+    env:
+      - VNC_PW=osmanager
+      - VNC_RESOLUTION=1920x1080
+    volumes:
+      - name: debian-config
+        mount_path: /home/headless
+        size: 1GB
+    depends_on:
+      - app
+
+regions:
+  - fra
+  - was
+
+scaling:
+  min: 1
+  max: 3

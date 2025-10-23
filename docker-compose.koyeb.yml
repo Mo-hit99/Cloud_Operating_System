@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: docker_os_manager
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=docker_os_manager
+      - DB_USER=admin
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ubuntu-desktop:
+    image: dorowu/ubuntu-desktop-lxde-vnc:latest
+    ports:
+      - "3002:80"
+    environment:
+      - VNC_PASSWORD=osmanager
+      - RESOLUTION=1920x1080
+    volumes:
+      - ubuntu_config:/home/ubuntu
+    restart: unless-stopped
+    depends_on:
+      - app
+
+  alpine-desktop:
+    image: danielguerra/alpine-vnc:latest
+    ports:
+      - "3001:6080"
+    environment:
+      - VNC_PASSWORD=osmanager
+      - RESOLUTION=1920x1080
+    volumes:
+      - alpine_config:/home/alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+
+  debian-desktop:
+    image: accetto/debian-vnc-xfce-g3:latest
+    ports:
+      - "3003:5901"
+    environment:
+      - VNC_PW=osmanager
+      - VNC_RESOLUTION=1920x1080
+    volumes:
+      - debian_config:/home/headless
+    restart: unless-stopped
+    depends_on:
+      - app
+
+volumes:
+  postgres_data:
+  ubuntu_config:
+  alpine_config:
+  debian_config:

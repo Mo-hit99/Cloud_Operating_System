@@ -13,7 +13,10 @@
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "os:start": "docker-compose --profile os-services up -d",
-    "os:stop": "docker-compose --profile os-services down"
+    "os:stop": "docker-compose --profile os-services down",
+    "koyeb:up": "docker-compose -f docker-compose.koyeb.yml up -d",
+    "koyeb:down": "docker-compose -f docker-compose.koyeb.yml down",
+    "koyeb:build": "npm run install-all && cd server && npm run build && cd ../client && npm run build"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
