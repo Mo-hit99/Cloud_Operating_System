@@ -1,0 +1,8 @@
+FROM accetto/debian-vnc-xfce-g3:latest
+
+ENV VNC_PW=osmanager
+ENV VNC_RESOLUTION=1920x1080
+
+EXPOSE 5901
+
+CMD ["/dockerstartup/vnc_startup.sh"]

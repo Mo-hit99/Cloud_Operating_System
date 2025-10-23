@@ -18,6 +18,7 @@ services:
     name: os-manager-redis
     plan: starter
     maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
 
   # Main Application (Backend + Frontend)
   - type: web
@@ -43,11 +44,11 @@ services:
         value: docker_os_manager
       - key: DB_USER
         value: admin
-      - key: DB_PASSWORD
+      - key: DATABASE_URL
         fromService:
           type: pserv
           name: os-manager-postgres
-          property: password
+          property: connectionString
       - key: REDIS_HOST
         fromService:
           type: redis
@@ -61,22 +62,37 @@ services:
     healthCheckPath: /api/health
 
   # Ubuntu Linux Desktop with noVNC
-  - type: web
+  - type: pserv
     name: ubuntu-desktop
-    env: docker
+    runtime: docker
     plan: starter
-    dockerCommand: docker run -p 80:80 -e VNC_PASSWORD=osmanager -e RESOLUTION=1920x1080 dorowu/ubuntu-desktop-lxde-vnc:latest
+    dockerfilePath: ./Dockerfile.ubuntu
+    envVars:
+      - key: VNC_PASSWORD
+        value: osmanager
+      - key: RESOLUTION
+        value: 1920x1080
 
   # Alpine Linux Desktop with VNC
-  - type: web
+  - type: pserv
     name: alpine-desktop
-    env: docker
+    runtime: docker
     plan: starter
-    dockerCommand: docker run -p 6080:6080 -e VNC_PASSWORD=osmanager -e RESOLUTION=1920x1080 danielguerra/alpine-vnc:latest
+    dockerfilePath: ./Dockerfile.alpine
+    envVars:
+      - key: VNC_PASSWORD
+        value: osmanager
+      - key: RESOLUTION
+        value: 1920x1080
 
   # Debian Linux Desktop with XFCE
-  - type: web
+  - type: pserv
     name: debian-desktop
-    env: docker
+    runtime: docker
     plan: starter
-    dockerCommand: docker run -p 5901:5901 -e VNC_PW=osmanager -e VNC_RESOLUTION=1920x1080 accetto/debian-vnc-xfce-g3:latest
+    dockerfilePath: ./Dockerfile.debian
+    envVars:
+      - key: VNC_PW
+        value: osmanager
+      - key: VNC_RESOLUTION
+        value: 1920x1080

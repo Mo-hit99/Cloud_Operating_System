@@ -1,0 +1,8 @@
+FROM danielguerra/alpine-vnc:latest
+
+ENV VNC_PASSWORD=osmanager
+ENV RESOLUTION=1920x1080
+
+EXPOSE 6080
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]

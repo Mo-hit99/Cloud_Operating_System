@@ -1,0 +1,8 @@
+FROM dorowu/ubuntu-desktop-lxde-vnc:latest
+
+ENV VNC_PASSWORD=osmanager
+ENV RESOLUTION=1920x1080
+
+EXPOSE 80
+
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
