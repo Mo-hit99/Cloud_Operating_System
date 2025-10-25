@@ -2,19 +2,19 @@ name: CI/CD Pipeline - Trigger Jenkins
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Deployment environment'
+        description: "Deployment environment"
         required: true
-        default: 'staging'
+        default: "staging"
         type: choice
         options:
-        - staging
-        - production
+          - staging
+          - production
 
 env:
   DOCKER_IMAGE_NAME: os-manager
@@ -25,23 +25,64 @@ env:
 jobs:
   trigger-jenkins:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Set up environment variables
-      run: |
-        echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
-        echo "COMMIT_SHA=${GITHUB_SHA::8}" >> $GITHUB_ENV
-        echo "BUILD_NUMBER=${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
-        
-    - name: Trigger Jenkins Pipeline
-      run: |
-        curl -X POST \
-          -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
-          -H "Content-Type: application/json" \
-          -d '{
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up environment variables
+        run: |
+          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+          echo "COMMIT_SHA=${GITHUB_SHA::8}" >> $GITHUB_ENV
+          echo "BUILD_NUMBER=${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+
+      - name: Validate Jenkins Configuration
+        run: |
+          if [ -z "${{ secrets.JENKINS_URL }}" ]; then
+            echo "❌ JENKINS_URL secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.JENKINS_USER }}" ]; then
+            echo "❌ JENKINS_USER secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.JENKINS_TOKEN }}" ]; then
+            echo "❌ JENKINS_TOKEN secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.JENKINS_JOB_NAME }}" ]; then
+            echo "❌ JENKINS_JOB_NAME secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
+            echo "❌ DOCKERHUB_USERNAME secret is not set"
+            exit 1
+          fi
+          echo "✅ All required secrets are configured"
+          echo "Jenkins URL: ${{ secrets.JENKINS_URL }}"
+          echo "Job Name: ${{ secrets.JENKINS_JOB_NAME }}"
+
+      - name: Trigger Jenkins Pipeline
+        run: |
+          # Set environment for this step
+          ENVIRONMENT="${{ github.event.inputs.environment }}"
+          if [ -z "$ENVIRONMENT" ]; then
+            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+              ENVIRONMENT="production"
+            else
+              ENVIRONMENT="staging"
+            fi
+          fi
+
+          echo "Triggering Jenkins build with parameters:"
+          echo "- Branch: ${{ env.BRANCH_NAME }}"
+          echo "- Commit: ${{ github.sha }}"
+          echo "- Environment: $ENVIRONMENT"
+          echo "- Docker Image: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.COMMIT_SHA }}"
+
+          # Create JSON payload
+          JSON_PAYLOAD=$(cat <<EOF
+          {
             "parameter": [
               {
                 "name": "GIT_BRANCH",
@@ -65,60 +106,172 @@ jobs:
               },
               {
                 "name": "ENVIRONMENT",
-                "value": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}"
+                "value": "$ENVIRONMENT"
               }
             ]
-          }' \
-          "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/buildWithParameters"
-          
-    - name: Wait for Jenkins build to start
-      run: |
-        echo "Waiting for Jenkins build to start..."
-        sleep 30
-        
-    - name: Get Jenkins build status
-      id: jenkins-status
-      run: |
-        # Get the latest build number for the job
-        LATEST_BUILD=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
-          "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/api/json" | \
-          jq -r '.lastBuild.number')
-        
-        echo "Latest Jenkins build number: $LATEST_BUILD"
-        echo "build_number=$LATEST_BUILD" >> $GITHUB_OUTPUT
-        
-        # Wait for build to complete and get status
-        while true; do
-          BUILD_STATUS=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
-            "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/$LATEST_BUILD/api/json" | \
-            jq -r '.result')
-          
-          if [ "$BUILD_STATUS" != "null" ]; then
-            echo "Jenkins build completed with status: $BUILD_STATUS"
-            echo "status=$BUILD_STATUS" >> $GITHUB_OUTPUT
-            break
+          }
+          EOF
+          )
+
+          # Trigger Jenkins build
+          JENKINS_URL="${{ secrets.JENKINS_URL }}"
+          JOB_NAME="${{ secrets.JENKINS_JOB_NAME }}"
+
+          # Remove trailing slash from Jenkins URL if present
+          JENKINS_URL=${JENKINS_URL%/}
+
+          echo "Making request to: ${JENKINS_URL}/job/${JOB_NAME}/buildWithParameters"
+
+          RESPONSE=$(curl -w "%{http_code}" -s -X POST \
+            -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "$JSON_PAYLOAD" \
+            "${JENKINS_URL}/job/${JOB_NAME}/buildWithParameters")
+
+          HTTP_CODE="${RESPONSE: -3}"
+
+          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 201 ]; then
+            echo "✅ Jenkins build triggered successfully (HTTP $HTTP_CODE)"
+          else
+            echo "❌ Failed to trigger Jenkins build (HTTP $HTTP_CODE)"
+            echo "Response: $RESPONSE"
+            exit 1
           fi
-          
-          echo "Jenkins build still running..."
+
+      - name: Wait for Jenkins build to start
+        run: |
+          echo "Waiting for Jenkins build to start..."
           sleep 30
-        done
-        
-    - name: Check Jenkins build result
-      run: |
-        if [ "${{ steps.jenkins-status.outputs.status }}" != "SUCCESS" ]; then
-          echo "Jenkins build failed with status: ${{ steps.jenkins-status.outputs.status }}"
-          echo "Check Jenkins logs at: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/${{ steps.jenkins-status.outputs.build_number }}/console"
-          exit 1
-        else
-          echo "Jenkins build completed successfully!"
-        fi
-        
-    - name: Create deployment summary
-      run: |
-        echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-        echo "- **Branch:** ${{ env.BRANCH_NAME }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Docker Image:** ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.COMMIT_SHA }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Jenkins Build:** [${{ steps.jenkins-status.outputs.build_number }}](${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/${{ steps.jenkins-status.outputs.build_number }})" >> $GITHUB_STEP_SUMMARY
-        echo "- **Environment:** ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Status:** ✅ Success" >> $GITHUB_STEP_SUMMARY
+
+      - name: Get Jenkins build status
+        id: jenkins-status
+        run: |
+          # Set up Jenkins URL and job name
+          JENKINS_URL="${{ secrets.JENKINS_URL }}"
+          JOB_NAME="${{ secrets.JENKINS_JOB_NAME }}"
+
+          # Remove trailing slash from Jenkins URL if present
+          JENKINS_URL=${JENKINS_URL%/}
+
+          echo "Checking Jenkins job status..."
+          echo "Jenkins URL: $JENKINS_URL"
+          echo "Job Name: $JOB_NAME"
+
+          # Get the latest build number for the job
+          echo "Getting latest build number..."
+          JOB_INFO=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+            "${JENKINS_URL}/job/${JOB_NAME}/api/json")
+
+          if [ $? -ne 0 ]; then
+            echo "❌ Failed to connect to Jenkins API"
+            exit 1
+          fi
+
+          LATEST_BUILD=$(echo "$JOB_INFO" | jq -r '.lastBuild.number // "null"')
+
+          if [ "$LATEST_BUILD" = "null" ] || [ -z "$LATEST_BUILD" ]; then
+            echo "❌ Could not get latest build number"
+            echo "Jenkins response: $JOB_INFO"
+            exit 1
+          fi
+
+          echo "Latest Jenkins build number: $LATEST_BUILD"
+          echo "build_number=$LATEST_BUILD" >> $GITHUB_OUTPUT
+
+          # Wait for build to complete and get status
+          MAX_WAIT=1800  # 30 minutes maximum wait
+          WAIT_TIME=0
+
+          while [ $WAIT_TIME -lt $MAX_WAIT ]; do
+            echo "Checking build status... (waited ${WAIT_TIME}s)"
+            
+            BUILD_INFO=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+              "${JENKINS_URL}/job/${JOB_NAME}/${LATEST_BUILD}/api/json")
+            
+            if [ $? -ne 0 ]; then
+              echo "❌ Failed to get build status"
+              exit 1
+            fi
+            
+            BUILD_STATUS=$(echo "$BUILD_INFO" | jq -r '.result // "null"')
+            
+            if [ "$BUILD_STATUS" != "null" ]; then
+              echo "✅ Jenkins build completed with status: $BUILD_STATUS"
+              echo "status=$BUILD_STATUS" >> $GITHUB_OUTPUT
+              break
+            fi
+            
+            echo "Jenkins build still running..."
+            sleep 30
+            WAIT_TIME=$((WAIT_TIME + 30))
+          done
+
+          if [ $WAIT_TIME -ge $MAX_WAIT ]; then
+            echo "❌ Build timeout after ${MAX_WAIT} seconds"
+            echo "status=TIMEOUT" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check Jenkins build result
+        run: |
+          BUILD_STATUS="${{ steps.jenkins-status.outputs.status }}"
+          BUILD_NUMBER="${{ steps.jenkins-status.outputs.build_number }}"
+          JENKINS_URL="${{ secrets.JENKINS_URL }}"
+          JOB_NAME="${{ secrets.JENKINS_JOB_NAME }}"
+
+          # Remove trailing slash from Jenkins URL if present
+          JENKINS_URL=${JENKINS_URL%/}
+
+          echo "Build Status: $BUILD_STATUS"
+          echo "Build Number: $BUILD_NUMBER"
+
+          if [ "$BUILD_STATUS" = "SUCCESS" ]; then
+            echo "✅ Jenkins build completed successfully!"
+            echo "View build details: ${JENKINS_URL}/job/${JOB_NAME}/${BUILD_NUMBER}/"
+          elif [ "$BUILD_STATUS" = "TIMEOUT" ]; then
+            echo "⏰ Jenkins build timed out"
+            echo "Check build status: ${JENKINS_URL}/job/${JOB_NAME}/${BUILD_NUMBER}/"
+            exit 1
+          else
+            echo "❌ Jenkins build failed with status: $BUILD_STATUS"
+            echo "Check Jenkins logs: ${JENKINS_URL}/job/${JOB_NAME}/${BUILD_NUMBER}/console"
+            exit 1
+          fi
+
+      - name: Create deployment summary
+        run: |
+          # Set environment for summary
+          ENVIRONMENT="${{ github.event.inputs.environment }}"
+          if [ -z "$ENVIRONMENT" ]; then
+            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+              ENVIRONMENT="production"
+            else
+              ENVIRONMENT="staging"
+            fi
+          fi
+
+          JENKINS_URL="${{ secrets.JENKINS_URL }}"
+          JOB_NAME="${{ secrets.JENKINS_JOB_NAME }}"
+          BUILD_NUMBER="${{ steps.jenkins-status.outputs.build_number }}"
+
+          # Remove trailing slash from Jenkins URL if present
+          JENKINS_URL=${JENKINS_URL%/}
+
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | \`${{ env.BRANCH_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | \`$ENVIRONMENT\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Docker Image** | \`${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.COMMIT_SHA }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Jenkins Build** | [#${BUILD_NUMBER}](${JENKINS_URL}/job/${JOB_NAME}/${BUILD_NUMBER}/) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | ✅ **Success** |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Quick Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [Jenkins Console Output](${JENKINS_URL}/job/${JOB_NAME}/${BUILD_NUMBER}/console)" >> $GITHUB_STEP_SUMMARY
+          echo "- [DockerHub Image](https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}/tags)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Verify deployment: \`kubectl get pods -n $ENVIRONMENT\`" >> $GITHUB_STEP_SUMMARY
+          echo "2. Check service: \`kubectl get service os-manager-service -n $ENVIRONMENT\`" >> $GITHUB_STEP_SUMMARY
+          echo "3. Access application: \`http://your-server-ip:service-port\`" >> $GITHUB_STEP_SUMMARY

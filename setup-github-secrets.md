@@ -16,15 +16,18 @@ Go to your GitHub repository → Settings → Secrets and variables → Actions 
 ### 1. Jenkins Configuration
 
 - **JENKINS_URL**: Your Jenkins server URL
-  - Example: `http://your-ubuntu-server-ip:8080`
+  - Example: `http://192.168.1.100:8080`
   - Format: `http://IP_ADDRESS:PORT` (no trailing slash)
+  - ⚠️ Make sure Jenkins is accessible from GitHub Actions (public IP or VPN)
 - **JENKINS_USER**: Your Jenkins username
   - The user account that has permission to trigger builds
+  - Must have "Build" permission on the target job
 - **JENKINS_TOKEN**: Jenkins API token
   - Generate from: Jenkins → User Profile → Configure → API Token → Add new Token
+  - Copy the generated token immediately (it won't be shown again)
 - **JENKINS_JOB_NAME**: Name of your Jenkins pipeline job
   - Example: `os-manager-pipeline`
-  - Must match the job name you create in Jenkins
+  - Must match EXACTLY the job name you create in Jenkins (case-sensitive)
 
 ### 2. DockerHub Configuration
 
@@ -216,12 +219,35 @@ ls -la .github/workflows/ci-cd-pipeline.yml
 git branch -a
 ```
 
+#### "URL rejected: Malformed input" Error
+
+This error occurs when the curl command receives an invalid URL. Common causes:
+
+1. **Empty or unset secrets**:
+   - Check if all required secrets are set in GitHub repository settings
+   - Missing secrets will result in empty variables in the URL
+
+2. **JENKINS_URL format issues**:
+   - ✅ Correct: `http://192.168.1.100:8080`
+   - ❌ Wrong: `http://192.168.1.100:8080/` (trailing slash)
+   - ❌ Wrong: `192.168.1.100:8080` (missing protocol)
+   - ❌ Wrong: `http://jenkins server:8080` (spaces in URL)
+
+3. **JENKINS_JOB_NAME issues**:
+   - ✅ Correct: `os-manager-pipeline`
+   - ❌ Wrong: `os manager pipeline` (spaces)
+   - ❌ Wrong: Job name with special characters
+
 #### Jenkins API Call Failures
 
-- Verify JENKINS_URL format (no trailing slash)
+- Verify JENKINS_URL format (no trailing slash, include http://)
 - Check JENKINS_USER has API access permissions
 - Regenerate JENKINS_TOKEN if authentication fails
-- Ensure JENKINS_JOB_NAME matches exactly
+- Ensure JENKINS_JOB_NAME matches exactly (case-sensitive)
+- Test Jenkins API manually:
+  ```bash
+  curl -u "username:token" "http://your-jenkins:8080/api/json"
+  ```
 
 ### Jenkins Pipeline Issues
 
