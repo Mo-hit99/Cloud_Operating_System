@@ -170,6 +170,16 @@ pipeline {
                         echo "Checking redis deployment..."
                         kubectl rollout status deployment/redis -n ${env.NAMESPACE} --timeout=300s || echo "Redis deployment timeout"
                         
+                        # Wait for desktop containers
+                        echo "Checking Ubuntu desktop deployment..."
+                        kubectl rollout status deployment/ubuntu-desktop -n ${env.NAMESPACE} --timeout=300s || echo "Ubuntu desktop deployment timeout"
+                        
+                        echo "Checking Alpine desktop deployment..."
+                        kubectl rollout status deployment/alpine-desktop -n ${env.NAMESPACE} --timeout=300s || echo "Alpine desktop deployment timeout"
+                        
+                        echo "Checking Debian desktop deployment..."
+                        kubectl rollout status deployment/debian-desktop -n ${env.NAMESPACE} --timeout=300s || echo "Debian desktop deployment timeout"
+                        
                         echo "All deployments completed"
                     """
                 }
@@ -220,7 +230,10 @@ pipeline {
                         echo "✅ Application: ${env.APP_NAME}"
                         echo "✅ Namespace: ${env.NAMESPACE}"
                         echo "✅ Image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                        echo "🌐 Access URL: http://\$SERVICE_IP:\$SERVICE_PORT"
+                        echo "🌐 Main App: http://\$SERVICE_IP:30000"
+                        echo "🖥️  Ubuntu Desktop: http://\$SERVICE_IP:30002"
+                        echo "🏔️  Alpine Desktop: http://\$SERVICE_IP:30001"
+                        echo "🐧 Debian Desktop: http://\$SERVICE_IP:30003"
                         
                         # Store deployment info
                         echo "DEPLOYMENT_URL=http://\$SERVICE_IP:\$SERVICE_PORT" > deployment.properties

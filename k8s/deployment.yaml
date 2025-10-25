@@ -43,6 +43,11 @@ spec:
           value: "redis-service"
         - name: REDIS_PORT
           value: "6379"
+        volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+        securityContext:
+          privileged: true
         resources:
           requests:
             memory: "256Mi"
@@ -62,6 +67,11 @@ spec:
             port: 5000
           initialDelaySeconds: 5
           periodSeconds: 5
+      volumes:
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+          type: Socket
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -141,4 +151,127 @@ spec:
             cpu: "100m"
           limits:
             memory: "256Mi"
-            cpu: "200m"
+            cpu: "200m"---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ubuntu-desktop
+  namespace: {{NAMESPACE}}
+  labels:
+    app: ubuntu-desktop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ubuntu-desktop
+  template:
+    metadata:
+      labels:
+        app: ubuntu-desktop
+    spec:
+      containers:
+      - name: ubuntu-desktop
+        image: dorowu/ubuntu-desktop-lxde-vnc:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: VNC_PASSWORD
+          value: "osmanager"
+        - name: RESOLUTION
+          value: "1920x1080"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: ubuntu-config
+          mountPath: /home/ubuntu
+      volumes:
+      - name: ubuntu-config
+        emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpine-desktop
+  namespace: {{NAMESPACE}}
+  labels:
+    app: alpine-desktop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alpine-desktop
+  template:
+    metadata:
+      labels:
+        app: alpine-desktop
+    spec:
+      containers:
+      - name: alpine-desktop
+        image: danielguerra/alpine-vnc:latest
+        ports:
+        - containerPort: 6080
+        env:
+        - name: VNC_PASSWORD
+          value: "osmanager"
+        - name: RESOLUTION
+          value: "1920x1080"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: alpine-config
+          mountPath: /home/alpine
+      volumes:
+      - name: alpine-config
+        emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: debian-desktop
+  namespace: {{NAMESPACE}}
+  labels:
+    app: debian-desktop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: debian-desktop
+  template:
+    metadata:
+      labels:
+        app: debian-desktop
+    spec:
+      containers:
+      - name: debian-desktop
+        image: accetto/debian-vnc-xfce-g3:latest
+        ports:
+        - containerPort: 5901
+        env:
+        - name: VNC_PW
+          value: "osmanager"
+        - name: VNC_RESOLUTION
+          value: "1920x1080"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: debian-config
+          mountPath: /home/headless
+      volumes:
+      - name: debian-config
+        emptyDir: {}
