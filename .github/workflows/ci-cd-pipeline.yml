@@ -122,19 +122,89 @@ jobs:
 
           echo "Making request to: ${JENKINS_URL}/job/${JOB_NAME}/buildWithParameters"
 
-          RESPONSE=$(curl -w "%{http_code}" -s -X POST \
+          # Test Jenkins connectivity first
+          echo "Testing Jenkins connectivity..."
+          CONNECTIVITY_TEST=$(curl -s -w "%{http_code}" --connect-timeout 10 --max-time 30 \
+            -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+            "${JENKINS_URL}/api/json" 2>/dev/null || echo "CURL_FAILED")
+
+          if [[ "$CONNECTIVITY_TEST" == *"CURL_FAILED"* ]]; then
+            echo "❌ Cannot connect to Jenkins server"
+            echo "Check if Jenkins URL is accessible: ${JENKINS_URL}"
+            echo "Common issues:"
+            echo "  - Jenkins server is down or unreachable"
+            echo "  - Network connectivity issues from GitHub Actions"
+            echo "  - Firewall blocking external access"
+            echo "  - Jenkins URL is incorrect or internal-only"
+            echo ""
+            echo "💡 Solutions:"
+            echo "  - Ensure Jenkins has a public IP or proper port forwarding"
+            echo "  - Check if Jenkins is running: systemctl status jenkins"
+            echo "  - Verify firewall allows port 8080: sudo ufw status"
+            exit 1
+          fi
+
+          CONN_HTTP_CODE="${CONNECTIVITY_TEST: -3}"
+          if [ "$CONN_HTTP_CODE" -eq 200 ]; then
+            echo "✅ Jenkins connectivity test passed"
+          else
+            echo "❌ Jenkins connectivity test failed (HTTP $CONN_HTTP_CODE)"
+            echo "Check Jenkins credentials and permissions"
+            exit 1
+          fi
+
+          # Now trigger the build with increased timeout
+          echo "Triggering Jenkins build..."
+          RESPONSE=$(curl -s -w "%{http_code}" --connect-timeout 15 --max-time 90 \
             -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d "$JSON_PAYLOAD" \
-            "${JENKINS_URL}/job/${JOB_NAME}/buildWithParameters")
+            -X POST "${JENKINS_URL}/job/${JOB_NAME}/buildWithParameters" 2>/dev/null || echo "CURL_FAILED")
+
+          if [[ "$RESPONSE" == *"CURL_FAILED"* ]]; then
+            echo "❌ Curl command failed - connection timeout or network error"
+            echo "Possible causes:"
+            echo "  - Jenkins server is slow to respond (>90 seconds)"
+            echo "  - Network timeout between GitHub Actions and Jenkins"
+            echo "  - Jenkins job name '${JOB_NAME}' doesn't exist"
+            echo "  - Jenkins job doesn't accept parameters"
+            echo ""
+            echo "💡 Debug steps:"
+            echo "  - Check Jenkins job exists: ${JENKINS_URL}/job/${JOB_NAME}/"
+            echo "  - Verify job accepts parameters"
+            echo "  - Test manually: curl -u user:token ${JENKINS_URL}/job/${JOB_NAME}/build"
+            exit 1
+          fi
 
           HTTP_CODE="${RESPONSE: -3}"
+          RESPONSE_BODY="${RESPONSE%???}"
+
+          echo "HTTP Response Code: $HTTP_CODE"
+          if [ -n "$RESPONSE_BODY" ] && [ "$RESPONSE_BODY" != "null" ]; then
+            echo "Response Body: $RESPONSE_BODY"
+          fi
 
           if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 201 ]; then
             echo "✅ Jenkins build triggered successfully (HTTP $HTTP_CODE)"
+          elif [ "$HTTP_CODE" -eq 404 ]; then
+            echo "❌ Jenkins job not found (HTTP 404)"
+            echo "Check if job '${JOB_NAME}' exists in Jenkins"
+            echo "Browse to: ${JENKINS_URL}/job/${JOB_NAME}/"
+            echo "List all jobs: ${JENKINS_URL}/api/json?tree=jobs[name]"
+            exit 1
+          elif [ "$HTTP_CODE" -eq 403 ]; then
+            echo "❌ Permission denied (HTTP 403)"
+            echo "Check if user '${{ secrets.JENKINS_USER }}' has Build permission on job '${JOB_NAME}'"
+            echo "Jenkins → Manage Jenkins → Manage Users → Configure user permissions"
+            exit 1
+          elif [ "$HTTP_CODE" -eq 401 ]; then
+            echo "❌ Authentication failed (HTTP 401)"
+            echo "Check Jenkins username and API token"
+            echo "Regenerate token: Jenkins → User → Configure → API Token"
+            exit 1
           else
             echo "❌ Failed to trigger Jenkins build (HTTP $HTTP_CODE)"
-            echo "Response: $RESPONSE"
+            echo "Full response: $RESPONSE"
             exit 1
           fi
 
