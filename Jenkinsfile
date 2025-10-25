@@ -81,11 +81,14 @@ pipeline {
                     
                     // Create namespace if it doesn't exist
                     sh """
+                        export KUBECONFIG=/var/lib/jenkins/.kube/config
                         kubectl create namespace ${env.NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                     """
                     
                     // Apply Kubernetes manifests
                     sh """
+                        export KUBECONFIG=/var/lib/jenkins/.kube/config
+                        
                         # Replace placeholders in k8s manifests
                         sed -i 's|{{IMAGE_NAME}}|${env.DOCKER_IMAGE}:${env.IMAGE_TAG}|g' k8s/*.yaml
                         sed -i 's|{{NAMESPACE}}|${env.NAMESPACE}|g' k8s/*.yaml
@@ -106,6 +109,8 @@ pipeline {
                 script {
                     echo "Verifying deployment..."
                     sh """
+                        export KUBECONFIG=/var/lib/jenkins/.kube/config
+                        
                         # Get deployment status
                         kubectl get deployments -n ${env.NAMESPACE}
                         kubectl get pods -n ${env.NAMESPACE}
