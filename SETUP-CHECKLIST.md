@@ -103,7 +103,7 @@ Check if secrets are properly set:
 
 ### Other Common Issues
 
-- **JENKINS_URL**: Must include `http://` and no trailing `/`
+- **JENKINS_URL**: Must include `http://` and no trailing `/`ss
 - **JENKINS_JOB_NAME**: Must match exactly (case-sensitive)
 - **Jenkins Access**: Ensure Jenkins is accessible from GitHub (public IP or proper networking)
 - **Permissions**: Jenkins user must have build permissions on the job
