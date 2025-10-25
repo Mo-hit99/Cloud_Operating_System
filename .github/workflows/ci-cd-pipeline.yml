@@ -1,0 +1,124 @@
+name: CI/CD Pipeline - Trigger Jenkins
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+env:
+  DOCKER_IMAGE_NAME: os-manager
+  JENKINS_URL: ${{ secrets.JENKINS_URL }}
+  JENKINS_USER: ${{ secrets.JENKINS_USER }}
+  JENKINS_TOKEN: ${{ secrets.JENKINS_TOKEN }}
+
+jobs:
+  trigger-jenkins:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up environment variables
+      run: |
+        echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+        echo "COMMIT_SHA=${GITHUB_SHA::8}" >> $GITHUB_ENV
+        echo "BUILD_NUMBER=${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+        
+    - name: Trigger Jenkins Pipeline
+      run: |
+        curl -X POST \
+          -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "parameter": [
+              {
+                "name": "GIT_BRANCH",
+                "value": "${{ env.BRANCH_NAME }}"
+              },
+              {
+                "name": "GIT_COMMIT",
+                "value": "${{ github.sha }}"
+              },
+              {
+                "name": "BUILD_NUMBER",
+                "value": "${{ env.BUILD_NUMBER }}"
+              },
+              {
+                "name": "DOCKER_IMAGE_TAG",
+                "value": "${{ env.DOCKER_IMAGE_NAME }}:${{ env.COMMIT_SHA }}"
+              },
+              {
+                "name": "DOCKERHUB_REPO",
+                "value": "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}"
+              },
+              {
+                "name": "ENVIRONMENT",
+                "value": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}"
+              }
+            ]
+          }' \
+          "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/buildWithParameters"
+          
+    - name: Wait for Jenkins build to start
+      run: |
+        echo "Waiting for Jenkins build to start..."
+        sleep 30
+        
+    - name: Get Jenkins build status
+      id: jenkins-status
+      run: |
+        # Get the latest build number for the job
+        LATEST_BUILD=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+          "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/api/json" | \
+          jq -r '.lastBuild.number')
+        
+        echo "Latest Jenkins build number: $LATEST_BUILD"
+        echo "build_number=$LATEST_BUILD" >> $GITHUB_OUTPUT
+        
+        # Wait for build to complete and get status
+        while true; do
+          BUILD_STATUS=$(curl -s -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+            "${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/$LATEST_BUILD/api/json" | \
+            jq -r '.result')
+          
+          if [ "$BUILD_STATUS" != "null" ]; then
+            echo "Jenkins build completed with status: $BUILD_STATUS"
+            echo "status=$BUILD_STATUS" >> $GITHUB_OUTPUT
+            break
+          fi
+          
+          echo "Jenkins build still running..."
+          sleep 30
+        done
+        
+    - name: Check Jenkins build result
+      run: |
+        if [ "${{ steps.jenkins-status.outputs.status }}" != "SUCCESS" ]; then
+          echo "Jenkins build failed with status: ${{ steps.jenkins-status.outputs.status }}"
+          echo "Check Jenkins logs at: ${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/${{ steps.jenkins-status.outputs.build_number }}/console"
+          exit 1
+        else
+          echo "Jenkins build completed successfully!"
+        fi
+        
+    - name: Create deployment summary
+      run: |
+        echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch:** ${{ env.BRANCH_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Docker Image:** ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.COMMIT_SHA }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Jenkins Build:** [${{ steps.jenkins-status.outputs.build_number }}](${{ secrets.JENKINS_URL }}/job/${{ secrets.JENKINS_JOB_NAME }}/${{ steps.jenkins-status.outputs.build_number }})" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment:** ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status:** ✅ Success" >> $GITHUB_STEP_SUMMARY
