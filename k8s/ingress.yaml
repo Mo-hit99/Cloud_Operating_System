@@ -8,7 +8,7 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
   rules:
-  - host: osmanager.local
+  - host: osmanager.test
     http:
       paths:
       - path: /
@@ -18,7 +18,7 @@ spec:
             name: {{APP_NAME}}-service
             port:
               number: 5000
-  - host: ubuntu.osmanager.local
+  - host: ubuntu.osmanager.test
     http:
       paths:
       - path: /
@@ -28,7 +28,7 @@ spec:
             name: ubuntu-desktop-service
             port:
               number: 80
-  - host: alpine.osmanager.local
+  - host: alpine.osmanager.test
     http:
       paths:
       - path: /
@@ -38,7 +38,7 @@ spec:
             name: alpine-desktop-service
             port:
               number: 6080
-  - host: debian.osmanager.local
+  - host: debian.osmanager.test
     http:
       paths:
       - path: /
