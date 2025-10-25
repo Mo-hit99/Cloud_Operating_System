@@ -6,7 +6,7 @@ pipeline {
         string(name: 'GIT_COMMIT', defaultValue: '', description: 'Git commit SHA')
         string(name: 'BUILD_NUMBER', defaultValue: '1', description: 'Build number from GitHub Actions')
         string(name: 'DOCKER_IMAGE_TAG', defaultValue: 'os-manager:latest', description: 'Docker image tag')
-        string(name: 'DOCKERHUB_REPO', defaultValue: 'your-username/os-manager', description: 'DockerHub repository')
+        string(name: 'DOCKERHUB_REPO', defaultValue: 'mohitkohli007/os-manager', description: 'DockerHub repository')
         choice(name: 'ENVIRONMENT', choices: ['staging', 'production'], description: 'Deployment environment')
     }
     

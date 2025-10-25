@@ -29,11 +29,27 @@ Add these 5 required secrets:
 1. Jenkins Dashboard → **New Item**
 2. Name: `os-manager-pipeline` (must match `JENKINS_JOB_NAME`)
 3. Select **Pipeline** → **OK**
-4. Configure:
+4. **Configure the job**:
+
+   **General Section**:
+   - ✅ Check **"This project is parameterized"**
+   - Add these **String Parameters**:
+     | Parameter Name | Default Value | Description |
+     |----------------|---------------|-------------|
+     | `GIT_BRANCH` | `main` | Git branch to build |
+     | `GIT_COMMIT` | `` | Git commit SHA (leave empty) |
+     | `BUILD_NUMBER` | `1` | Build number from GitHub |
+     | `DOCKER_IMAGE_TAG` | `os-manager:latest` | Docker image tag |
+     | `DOCKERHUB_REPO` | `your-username/os-manager` | DockerHub repository |
+     | `ENVIRONMENT` | `staging` | Deployment environment |
+
+   **Pipeline Section**:
    - **Pipeline Definition**: Pipeline script from SCM
    - **SCM**: Git
    - **Repository URL**: Your GitHub repo URL
+   - **Branch Specifier**: `*/${GIT_BRANCH}` (uses parameter)
    - **Script Path**: `Jenkinsfile`
+
 5. **Save**
 
 ### 4. Setup Jenkins Credentials
@@ -69,6 +85,26 @@ Check if secrets are properly set:
 - You should see all 5 secrets listed (values are hidden for security)
 
 ## 🚨 Common Issues & Solutions
+
+### HTTP 400: "Job is not parameterized"
+**Problem**: `Error 400 *** is not parameterized`
+**Cause**: Jenkins job doesn't accept parameters
+
+**Solution**: Configure your Jenkins job to accept parameters:
+
+1. **Go to Jenkins job**: `http://your-jenkins:8080/job/os-manager-pipeline/configure`
+2. **Check "This project is parameterized"**
+3. **Add String Parameters** (click "Add Parameter" → "String Parameter"):
+   ```
+   Name: GIT_BRANCH          Default: main
+   Name: GIT_COMMIT          Default: (leave empty)
+   Name: BUILD_NUMBER        Default: 1
+   Name: DOCKER_IMAGE_TAG    Default: os-manager:latest
+   Name: DOCKERHUB_REPO      Default: your-username/os-manager
+   Name: ENVIRONMENT         Default: staging
+   ```
+4. **Update Branch Specifier**: Change from `*/main` to `*/${GIT_BRANCH}`
+5. **Save** the configuration
 
 ### Exit Code 28 (Connection Timeout)
 
