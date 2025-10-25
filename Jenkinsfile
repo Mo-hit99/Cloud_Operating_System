@@ -12,7 +12,7 @@ pipeline {
     
     environment {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-        KUBECONFIG = credentials('kubeconfig-file')
+        KUBECONFIG = '/var/lib/jenkins/.kube/config'
         DOCKER_IMAGE = "${params.DOCKERHUB_REPO}"
         IMAGE_TAG = "${params.GIT_COMMIT ? params.GIT_COMMIT.take(8) : 'latest'}"
         APP_NAME = 'os-manager'
