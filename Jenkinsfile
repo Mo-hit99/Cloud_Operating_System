@@ -144,8 +144,12 @@ pipeline {
                         echo "5. Applying services..."
                         kubectl apply -f k8s-processed/service.yaml -n ${env.NAMESPACE} || echo "Service apply failed"
                         
+                        echo "6. Applying ingress..."
+                        kubectl apply -f k8s-processed/ingress.yaml -n ${env.NAMESPACE} || echo "Ingress apply failed"
+                        
                         echo "All manifests applied - checking status..."
                         kubectl get all -n ${env.NAMESPACE}
+                        kubectl get ingress -n ${env.NAMESPACE}
                     """
                     
                     // Wait for deployment with better monitoring
@@ -225,15 +229,31 @@ pipeline {
                             SERVICE_IP=\$(kubectl get service ${env.APP_NAME}-service -n ${env.NAMESPACE} -o jsonpath='{.spec.clusterIP}' 2>/dev/null || echo "localhost")
                         fi
                         
+                        # Get Minikube/K8s IP for hosts file
+                        K8S_IP=\$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null || echo "192.168.49.2")
+                        
                         echo ""
                         echo "=== DEPLOYMENT SUMMARY ==="
                         echo "✅ Application: ${env.APP_NAME}"
                         echo "✅ Namespace: ${env.NAMESPACE}"
                         echo "✅ Image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
-                        echo "🌐 Main App: http://\$SERVICE_IP:30000"
-                        echo "🖥️  Ubuntu Desktop: http://\$SERVICE_IP:30002"
-                        echo "🏔️  Alpine Desktop: http://\$SERVICE_IP:30001"
-                        echo "🐧 Debian Desktop: http://\$SERVICE_IP:30003"
+                        echo "✅ Kubernetes IP: \$K8S_IP"
+                        echo ""
+                        echo "🌐 ACCESS URLS (via Ingress):"
+                        echo "   Main App: http://osmanager.local"
+                        echo "   Ubuntu Desktop: http://ubuntu.osmanager.local"
+                        echo "   Alpine Desktop: http://alpine.osmanager.local"
+                        echo "   Debian Desktop: http://debian.osmanager.local"
+                        echo ""
+                        echo "🔧 SETUP REQUIRED:"
+                        echo "   Add to /etc/hosts (Linux/Mac) or C:\\Windows\\System32\\drivers\\etc\\hosts (Windows):"
+                        echo "   \$K8S_IP    osmanager.local ubuntu.osmanager.local alpine.osmanager.local debian.osmanager.local"
+                        echo ""
+                        echo "📱 ALTERNATIVE ACCESS (NodePort):"
+                        echo "   Main App: http://\$K8S_IP:30000"
+                        echo "   Ubuntu Desktop: http://\$K8S_IP:30002"
+                        echo "   Alpine Desktop: http://\$K8S_IP:30001"
+                        echo "   Debian Desktop: http://\$K8S_IP:30003"
                         
                         # Store deployment info
                         echo "DEPLOYMENT_URL=http://\$SERVICE_IP:\$SERVICE_PORT" > deployment.properties
