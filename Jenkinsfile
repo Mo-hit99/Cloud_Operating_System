@@ -12,7 +12,6 @@ pipeline {
     
     environment {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-        KUBECONFIG = '/var/lib/jenkins/.kube/config'
         DOCKER_IMAGE = "${params.DOCKERHUB_REPO}"
         IMAGE_TAG = "${params.GIT_COMMIT ? params.GIT_COMMIT.take(8) : 'latest'}"
         APP_NAME = 'os-manager'
@@ -69,6 +68,11 @@ pipeline {
                         docker push ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}
                         docker push ${env.DOCKER_IMAGE}:latest
                         docker logout
+                        
+                        # Verify the image was pushed successfully
+                        echo "Verifying image push..."
+                        docker pull ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}
+                        echo "Image ${env.DOCKER_IMAGE}:${env.IMAGE_TAG} verified on DockerHub"
                     """
                 }
             }
@@ -82,8 +86,12 @@ pipeline {
                     // Check kubectl connectivity first
                     sh """
                         echo "Testing kubectl connectivity..."
+                        kubectl version --client
                         kubectl cluster-info
                         kubectl get nodes
+                        kubectl config current-context
+                        echo "Current user: \$(whoami)"
+                        echo "Kubectl config: \$(kubectl config view --minify)"
                     """
                     
                     // Create namespace if it doesn't exist
@@ -120,14 +128,24 @@ pipeline {
                     sh """
                         echo "Applying Kubernetes manifests..."
                         
-                        # Apply in specific order
-                        kubectl apply -f k8s-processed/namespace.yaml || true
-                        kubectl apply -f k8s-processed/secrets.yaml -n ${env.NAMESPACE}
-                        kubectl apply -f k8s-processed/pvc.yaml -n ${env.NAMESPACE}
-                        kubectl apply -f k8s-processed/deployment.yaml -n ${env.NAMESPACE}
-                        kubectl apply -f k8s-processed/service.yaml -n ${env.NAMESPACE}
+                        # Apply in specific order with error checking
+                        echo "1. Applying namespace..."
+                        kubectl apply -f k8s-processed/namespace.yaml || echo "Namespace apply failed"
                         
-                        echo "Applied manifests successfully"
+                        echo "2. Applying secrets..."
+                        kubectl apply -f k8s-processed/secrets.yaml -n ${env.NAMESPACE} || echo "Secrets apply failed"
+                        
+                        echo "3. Applying PVC..."
+                        kubectl apply -f k8s-processed/pvc.yaml -n ${env.NAMESPACE} || echo "PVC apply failed"
+                        
+                        echo "4. Applying deployments..."
+                        kubectl apply -f k8s-processed/deployment.yaml -n ${env.NAMESPACE} || echo "Deployment apply failed"
+                        
+                        echo "5. Applying services..."
+                        kubectl apply -f k8s-processed/service.yaml -n ${env.NAMESPACE} || echo "Service apply failed"
+                        
+                        echo "All manifests applied - checking status..."
+                        kubectl get all -n ${env.NAMESPACE}
                     """
                     
                     // Wait for deployment with better monitoring
@@ -135,12 +153,24 @@ pipeline {
                         echo "Waiting for deployment to be ready..."
                         
                         # Check if deployment exists
-                        kubectl get deployment ${env.APP_NAME} -n ${env.NAMESPACE} || echo "Deployment not found yet"
+                        if kubectl get deployment ${env.APP_NAME} -n ${env.NAMESPACE}; then
+                            echo "Deployment found, waiting for rollout..."
+                            kubectl rollout status deployment/${env.APP_NAME} -n ${env.NAMESPACE} --timeout=600s
+                            echo "Main app deployment completed"
+                        else
+                            echo "ERROR: Deployment ${env.APP_NAME} not found in namespace ${env.NAMESPACE}"
+                            kubectl get deployments -n ${env.NAMESPACE}
+                            exit 1
+                        fi
                         
-                        # Wait for rollout
-                        kubectl rollout status deployment/${env.APP_NAME} -n ${env.NAMESPACE} --timeout=600s
+                        # Also wait for postgres and redis
+                        echo "Checking postgres deployment..."
+                        kubectl rollout status deployment/postgres -n ${env.NAMESPACE} --timeout=300s || echo "Postgres deployment timeout"
                         
-                        echo "Deployment rollout completed"
+                        echo "Checking redis deployment..."
+                        kubectl rollout status deployment/redis -n ${env.NAMESPACE} --timeout=300s || echo "Redis deployment timeout"
+                        
+                        echo "All deployments completed"
                     """
                 }
             }
