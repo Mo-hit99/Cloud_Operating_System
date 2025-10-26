@@ -219,11 +219,11 @@ server {
 }
 EOF
                         
-                        # Apply NGINX configuration automatically
-                        echo "Configuring NGINX automatically..."
+                        # Create NGINX configuration (without sudo)
+                        echo "Creating NGINX configuration..."
                         
-                        # Create NGINX config file
-                        sudo tee /etc/nginx/sites-available/osmanager > /dev/null << EOF
+                        # Create NGINX config file in temp location
+                        cat > /tmp/osmanager-nginx-final.conf << EOF
 server {
     listen 80;
     server_name osmanager.test;
@@ -273,17 +273,30 @@ server {
 }
 EOF
                         
-                        # Enable the site
-                        sudo ln -sf /etc/nginx/sites-available/osmanager /etc/nginx/sites-enabled/
+                        # Create installation script
+                        cat > /tmp/install-nginx-config.sh << 'INSTALL_EOF'
+#!/bin/bash
+echo "Installing NGINX configuration..."
+cp /tmp/osmanager-nginx-final.conf /etc/nginx/sites-available/osmanager
+ln -sf /etc/nginx/sites-available/osmanager /etc/nginx/sites-enabled/
+nginx -t
+if [ \$? -eq 0 ]; then
+    systemctl reload nginx
+    echo "✅ NGINX configuration installed successfully"
+    echo "🌐 Access URLs:"
+    echo "   Main App: http://osmanager.test"
+    echo "   Ubuntu Desktop: http://ubuntu.osmanager.test"
+    echo "   Alpine Desktop: http://alpine.osmanager.test"
+    echo "   Debian Desktop: http://debian.osmanager.test"
+else
+    echo "❌ NGINX configuration test failed"
+    exit 1
+fi
+INSTALL_EOF
                         
-                        # Test NGINX configuration
-                        if sudo nginx -t; then
-                            sudo systemctl reload nginx
-                            echo "✅ NGINX configuration applied successfully"
-                        else
-                            echo "❌ NGINX configuration test failed"
-                            exit 1
-                        fi
+                        chmod +x /tmp/install-nginx-config.sh
+                        echo "✅ NGINX configuration created"
+                        echo "📋 Run this command to install: sudo /tmp/install-nginx-config.sh"
                         
                         echo "NGINX configuration created and reloaded"
                         
@@ -393,9 +406,9 @@ EOF
                         echo "   \$UBUNTU_SERVER_IP    osmanager.test ubuntu.osmanager.test alpine.osmanager.test debian.osmanager.test"
                         echo ""
                         echo "📋 NGINX CONFIGURATION:"
-                        echo "   Config file: /etc/nginx/sites-available/osmanager"
-                        echo "   Status: \$(sudo systemctl is-active nginx)"
-                        echo "   ✅ NGINX automatically configured and reloaded"
+                        echo "   Config file: /tmp/osmanager-nginx-final.conf"
+                        echo "   Install script: /tmp/install-nginx-config.sh"
+                        echo "   ⚠️  Run: sudo /tmp/install-nginx-config.sh"
                         echo ""
                         echo "🔍 SERVICE IPs:"
                         echo "   Main App: \$MAIN_APP_IP:5000"
