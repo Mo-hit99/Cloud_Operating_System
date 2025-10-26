@@ -6,11 +6,10 @@ metadata:
   labels:
     app: {{APP_NAME}}
 spec:
-  type: NodePort
+  type: ClusterIP
   ports:
   - port: 5000
     targetPort: 5000
-    nodePort: 30000
     protocol: TCP
     name: http
   selector:
@@ -56,11 +55,10 @@ metadata:
   labels:
     app: ubuntu-desktop
 spec:
-  type: NodePort
+  type: ClusterIP
   ports:
   - port: 80
     targetPort: 80
-    nodePort: 30002
     protocol: TCP
     name: vnc
   selector:
@@ -74,11 +72,10 @@ metadata:
   labels:
     app: alpine-desktop
 spec:
-  type: NodePort
+  type: ClusterIP
   ports:
   - port: 6080
     targetPort: 6080
-    nodePort: 30001
     protocol: TCP
     name: vnc
   selector:
@@ -92,11 +89,10 @@ metadata:
   labels:
     app: debian-desktop
 spec:
-  type: NodePort
+  type: ClusterIP
   ports:
   - port: 5901
     targetPort: 5901
-    nodePort: 30003
     protocol: TCP
     name: vnc
   selector:

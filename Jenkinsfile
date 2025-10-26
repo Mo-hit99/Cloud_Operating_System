@@ -144,8 +144,62 @@ pipeline {
                         echo "5. Applying services..."
                         kubectl apply -f k8s-processed/service.yaml -n ${env.NAMESPACE} || echo "Service apply failed"
                         
-                        echo "6. Applying ingress..."
-                        kubectl apply -f k8s-processed/ingress.yaml -n ${env.NAMESPACE} || echo "Ingress apply failed"
+                        echo "6. Creating NGINX configuration..."
+                        # Get cluster IP for services
+                        MAIN_APP_IP=\$(kubectl get service ${env.APP_NAME}-service -n ${env.NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                        UBUNTU_IP=\$(kubectl get service ubuntu-desktop-service -n ${env.NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                        ALPINE_IP=\$(kubectl get service alpine-desktop-service -n ${env.NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                        DEBIAN_IP=\$(kubectl get service debian-desktop-service -n ${env.NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                        
+                        # Create NGINX config
+                        cat > /tmp/osmanager-nginx.conf << EOF
+server {
+    listen 80;
+    server_name osmanager.test;
+    location / {
+        proxy_pass http://\$MAIN_APP_IP:5000;
+        proxy_set_header Host \\\$host;
+        proxy_set_header X-Real-IP \\\$remote_addr;
+    }
+}
+
+server {
+    listen 80;
+    server_name ubuntu.osmanager.test;
+    location / {
+        proxy_pass http://\$UBUNTU_IP:80;
+        proxy_set_header Host \\\$host;
+        proxy_set_header X-Real-IP \\\$remote_addr;
+    }
+}
+
+server {
+    listen 80;
+    server_name alpine.osmanager.test;
+    location / {
+        proxy_pass http://\$ALPINE_IP:6080;
+        proxy_set_header Host \\\$host;
+        proxy_set_header X-Real-IP \\\$remote_addr;
+    }
+}
+
+server {
+    listen 80;
+    server_name debian.osmanager.test;
+    location / {
+        proxy_pass http://\$DEBIAN_IP:5901;
+        proxy_set_header Host \\\$host;
+        proxy_set_header X-Real-IP \\\$remote_addr;
+    }
+}
+EOF
+                        
+                        # Copy to nginx sites-available
+                        sudo cp /tmp/osmanager-nginx.conf /etc/nginx/sites-available/osmanager
+                        sudo ln -sf /etc/nginx/sites-available/osmanager /etc/nginx/sites-enabled/
+                        sudo nginx -t && sudo systemctl reload nginx
+                        
+                        echo "NGINX configuration created and reloaded"
                         
                         echo "All manifests applied - checking status..."
                         kubectl get all -n ${env.NAMESPACE}
@@ -238,22 +292,29 @@ pipeline {
                         echo "✅ Namespace: ${env.NAMESPACE}"
                         echo "✅ Image: ${env.DOCKER_IMAGE}:${env.IMAGE_TAG}"
                         echo "✅ Kubernetes IP: \$K8S_IP"
+                        # Get Ubuntu server IP
+                        UBUNTU_SERVER_IP=\$(hostname -I | awk '{print \$1}')
+                        
                         echo ""
-                        echo "🌐 ACCESS URLS (via Ingress):"
+                        echo "🌐 ACCESS URLS (via NGINX on Ubuntu Server):"
                         echo "   Main App: http://osmanager.test"
                         echo "   Ubuntu Desktop: http://ubuntu.osmanager.test"
                         echo "   Alpine Desktop: http://alpine.osmanager.test"
                         echo "   Debian Desktop: http://debian.osmanager.test"
                         echo ""
-                        echo "🔧 SETUP REQUIRED:"
+                        echo "🔧 SETUP REQUIRED ON YOUR LOCAL MACHINE:"
                         echo "   Add to /etc/hosts (Linux/Mac) or C:\\Windows\\System32\\drivers\\etc\\hosts (Windows):"
-                        echo "   \$K8S_IP    osmanager.test ubuntu.osmanager.test alpine.osmanager.test debian.osmanager.test"
+                        echo "   \$UBUNTU_SERVER_IP    osmanager.test ubuntu.osmanager.test alpine.osmanager.test debian.osmanager.test"
                         echo ""
-                        echo "📱 ALTERNATIVE ACCESS (NodePort):"
-                        echo "   Main App: http://\$K8S_IP:30000"
-                        echo "   Ubuntu Desktop: http://\$K8S_IP:30002"
-                        echo "   Alpine Desktop: http://\$K8S_IP:30001"
-                        echo "   Debian Desktop: http://\$K8S_IP:30003"
+                        echo "📋 NGINX CONFIG CREATED:"
+                        echo "   Config file: /etc/nginx/sites-available/osmanager"
+                        echo "   NGINX status: \$(sudo systemctl is-active nginx)"
+                        echo ""
+                        echo "🔍 SERVICE IPs:"
+                        echo "   Main App: \$MAIN_APP_IP:5000"
+                        echo "   Ubuntu Desktop: \$UBUNTU_IP:80"
+                        echo "   Alpine Desktop: \$ALPINE_IP:6080"
+                        echo "   Debian Desktop: \$DEBIAN_IP:5901"
                         
                         # Store deployment info
                         echo "DEPLOYMENT_URL=http://\$SERVICE_IP:\$SERVICE_PORT" > deployment.properties
