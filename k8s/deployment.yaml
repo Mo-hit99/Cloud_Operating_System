@@ -151,7 +151,8 @@ spec:
             cpu: "100m"
           limits:
             memory: "256Mi"
-            cpu: "200m"---
+            cpu: "200m"
+---
 
 apiVersion: apps/v1
 kind: Deployment
