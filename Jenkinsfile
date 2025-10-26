@@ -78,6 +78,31 @@ pipeline {
             }
         }
         
+        stage('Setup Jenkins Sudo Access') {
+            steps {
+                script {
+                    echo "Setting up sudo access for Jenkins..."
+                    
+                    // Check if Jenkins user has sudo access
+                    sh """
+                        # Check current user
+                        echo "Current user: \$(whoami)"
+                        echo "Groups: \$(groups)"
+                        
+                        # Test sudo access
+                        if sudo -n true 2>/dev/null; then
+                            echo "✅ Jenkins user has passwordless sudo access"
+                        else
+                            echo "⚠️  Jenkins user needs sudo configuration"
+                            echo "Run this command on server as root:"
+                            echo "echo 'jenkins ALL=(ALL) NOPASSWD: /usr/sbin/nginx, /bin/systemctl, /usr/bin/tee, /bin/ln' >> /etc/sudoers.d/jenkins"
+                            echo "chmod 440 /etc/sudoers.d/jenkins"
+                        fi
+                    """
+                }
+            }
+        }
+        
         stage('Deploy to Kubernetes') {
             steps {
                 script {
@@ -194,30 +219,71 @@ server {
 }
 EOF
                         
-                        # Create NGINX setup script
-                        cat > /tmp/setup-nginx.sh << 'SCRIPT_EOF'
-#!/bin/bash
-echo "Setting up NGINX configuration for OS Manager..."
-sudo cp /tmp/osmanager-nginx.conf /etc/nginx/sites-available/osmanager
-sudo ln -sf /etc/nginx/sites-available/osmanager /etc/nginx/sites-enabled/
-sudo nginx -t
-if [ \$? -eq 0 ]; then
-    sudo systemctl reload nginx
-    echo "✅ NGINX configuration applied successfully"
-    echo "🌐 Access your app at:"
-    echo "   Main App: http://osmanager.test"
-    echo "   Ubuntu Desktop: http://ubuntu.osmanager.test"
-    echo "   Alpine Desktop: http://alpine.osmanager.test"
-    echo "   Debian Desktop: http://debian.osmanager.test"
-else
-    echo "❌ NGINX configuration test failed"
-    exit 1
-fi
-SCRIPT_EOF
+                        # Apply NGINX configuration automatically
+                        echo "Configuring NGINX automatically..."
                         
-                        chmod +x /tmp/setup-nginx.sh
-                        echo "✅ NGINX config and setup script created"
-                        echo "📋 To complete setup, run: /tmp/setup-nginx.sh"
+                        # Create NGINX config file
+                        sudo tee /etc/nginx/sites-available/osmanager > /dev/null << EOF
+server {
+    listen 80;
+    server_name osmanager.test;
+    location / {
+        proxy_pass http://\$MAIN_APP_IP:5000;
+        proxy_set_header Host \\\$host;
+        proxy_set_header X-Real-IP \\\$remote_addr;
+        proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \\\$scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name ubuntu.osmanager.test;
+    location / {
+        proxy_pass http://\$UBUNTU_IP:80;
+        proxy_set_header Host \\\$host;
+        proxy_set_header X-Real-IP \\\$remote_addr;
+        proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \\\$scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name alpine.osmanager.test;
+    location / {
+        proxy_pass http://\$ALPINE_IP:6080;
+        proxy_set_header Host \\\$host;
+        proxy_set_header X-Real-IP \\\$remote_addr;
+        proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \\\$scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name debian.osmanager.test;
+    location / {
+        proxy_pass http://\$DEBIAN_IP:5901;
+        proxy_set_header Host \\\$host;
+        proxy_set_header X-Real-IP \\\$remote_addr;
+        proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \\\$scheme;
+    }
+}
+EOF
+                        
+                        # Enable the site
+                        sudo ln -sf /etc/nginx/sites-available/osmanager /etc/nginx/sites-enabled/
+                        
+                        # Test NGINX configuration
+                        if sudo nginx -t; then
+                            sudo systemctl reload nginx
+                            echo "✅ NGINX configuration applied successfully"
+                        else
+                            echo "❌ NGINX configuration test failed"
+                            exit 1
+                        fi
                         
                         echo "NGINX configuration created and reloaded"
                         
@@ -326,10 +392,10 @@ SCRIPT_EOF
                         echo "   Add to /etc/hosts (Linux/Mac) or C:\\Windows\\System32\\drivers\\etc\\hosts (Windows):"
                         echo "   \$UBUNTU_SERVER_IP    osmanager.test ubuntu.osmanager.test alpine.osmanager.test debian.osmanager.test"
                         echo ""
-                        echo "📋 NGINX SETUP:"
-                        echo "   Config file: /tmp/osmanager-nginx.conf"
-                        echo "   Setup script: /tmp/setup-nginx.sh"
-                        echo "   ⚠️  Manual step: Run '/tmp/setup-nginx.sh' to configure NGINX"
+                        echo "📋 NGINX CONFIGURATION:"
+                        echo "   Config file: /etc/nginx/sites-available/osmanager"
+                        echo "   Status: \$(sudo systemctl is-active nginx)"
+                        echo "   ✅ NGINX automatically configured and reloaded"
                         echo ""
                         echo "🔍 SERVICE IPs:"
                         echo "   Main App: \$MAIN_APP_IP:5000"
