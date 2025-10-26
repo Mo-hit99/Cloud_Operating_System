@@ -194,10 +194,30 @@ server {
 }
 EOF
                         
-                        # Copy to nginx sites-available
-                        sudo cp /tmp/osmanager-nginx.conf /etc/nginx/sites-available/osmanager
-                        sudo ln -sf /etc/nginx/sites-available/osmanager /etc/nginx/sites-enabled/
-                        sudo nginx -t && sudo systemctl reload nginx
+                        # Create NGINX setup script
+                        cat > /tmp/setup-nginx.sh << 'SCRIPT_EOF'
+#!/bin/bash
+echo "Setting up NGINX configuration for OS Manager..."
+sudo cp /tmp/osmanager-nginx.conf /etc/nginx/sites-available/osmanager
+sudo ln -sf /etc/nginx/sites-available/osmanager /etc/nginx/sites-enabled/
+sudo nginx -t
+if [ \$? -eq 0 ]; then
+    sudo systemctl reload nginx
+    echo "✅ NGINX configuration applied successfully"
+    echo "🌐 Access your app at:"
+    echo "   Main App: http://osmanager.test"
+    echo "   Ubuntu Desktop: http://ubuntu.osmanager.test"
+    echo "   Alpine Desktop: http://alpine.osmanager.test"
+    echo "   Debian Desktop: http://debian.osmanager.test"
+else
+    echo "❌ NGINX configuration test failed"
+    exit 1
+fi
+SCRIPT_EOF
+                        
+                        chmod +x /tmp/setup-nginx.sh
+                        echo "✅ NGINX config and setup script created"
+                        echo "📋 To complete setup, run: /tmp/setup-nginx.sh"
                         
                         echo "NGINX configuration created and reloaded"
                         
@@ -306,9 +326,10 @@ EOF
                         echo "   Add to /etc/hosts (Linux/Mac) or C:\\Windows\\System32\\drivers\\etc\\hosts (Windows):"
                         echo "   \$UBUNTU_SERVER_IP    osmanager.test ubuntu.osmanager.test alpine.osmanager.test debian.osmanager.test"
                         echo ""
-                        echo "📋 NGINX CONFIG CREATED:"
-                        echo "   Config file: /etc/nginx/sites-available/osmanager"
-                        echo "   NGINX status: \$(sudo systemctl is-active nginx)"
+                        echo "📋 NGINX SETUP:"
+                        echo "   Config file: /tmp/osmanager-nginx.conf"
+                        echo "   Setup script: /tmp/setup-nginx.sh"
+                        echo "   ⚠️  Manual step: Run '/tmp/setup-nginx.sh' to configure NGINX"
                         echo ""
                         echo "🔍 SERVICE IPs:"
                         echo "   Main App: \$MAIN_APP_IP:5000"
